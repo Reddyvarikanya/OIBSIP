@@ -10,6 +10,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 DB_PATH = "bmi_records.db"
 
+INCHES_TO_METERS = 0.0254
+
 
 # ---------------------------------------------------------------------------
 # Database layer
@@ -145,7 +147,7 @@ class BMIApp(tk.Tk):
         tk.Entry(frame, textvariable=self.weight_var, width=25).grid(
             row=2, column=1, pady=5)
 
-        tk.Label(frame, text="Height (m):", bg="#f3f4f6", anchor="w").grid(
+        tk.Label(frame, text="Height (in):", bg="#f3f4f6", anchor="w").grid(
             row=3, column=0, sticky="w", pady=5)
         self.height_var = tk.StringVar()
         tk.Entry(frame, textvariable=self.height_var, width=25).grid(
@@ -201,16 +203,34 @@ class BMIApp(tk.Tk):
 
         try:
             weight = float(weight_raw)
-            height = float(height_raw)
+            height_in = float(height_raw)
         except ValueError:
             self._show_error("Weight and height must be numeric values.")
             return
 
-        if weight <= 0 or height <= 0:
+        if weight <= 0 or height_in <= 0:
             self._show_error("Weight and height must be positive numbers.")
             return
 
-        bmi = round(weight / (height ** 2), 2)
+        # Sanity-check the ranges so a value typed in the wrong unit
+        # (e.g. meters like 1.75 typed into the inches field) is caught
+        # instead of silently producing a nonsense BMI.
+        if not (20 <= height_in <= 100):
+            self._show_error(
+                "Height must be in inches (e.g. 65), between 20 and 100."
+            )
+            return
+
+        if not (20 <= weight <= 400):
+            self._show_error(
+                "Weight must be in kilograms, between 20 and 400."
+            )
+            return
+
+        # Convert height from inches to meters for the BMI formula
+        height_m = height_in * INCHES_TO_METERS
+
+        bmi = round(weight / (height_m ** 2), 2)
         category = classify_bmi(bmi)
         color = CATEGORY_COLORS[category]
 
@@ -220,7 +240,8 @@ class BMIApp(tk.Tk):
             text=f"{name}'s BMI: {bmi}\nCategory: {category}"
         )
 
-        saved = self.db.add_record(name, weight, height, bmi, category)
+        # Store the original height in inches, as entered
+        saved = self.db.add_record(name, weight, height_in, bmi, category)
         if saved:
             self._refresh_user_list()
             self.user_select_var.set(name)
